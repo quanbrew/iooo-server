@@ -8,6 +8,7 @@ use uuid::Uuid;
 use serde_json::Value as JsonValue;
 use serde_derive::{Serialize, Deserialize};
 use chrono::NaiveDateTime;
+use failure::{Error, format_err};
 
 #[get("/")]
 fn index() -> &'static str {
@@ -15,7 +16,7 @@ fn index() -> &'static str {
 }
 
 #[get("/item")]
-fn items() -> Json<Vec<Item>> {
+fn items() -> Result<Json<Vec<Item>>, Error> {
     let connection = establish_connection();
     let query = "
     SELECT
@@ -24,9 +25,9 @@ fn items() -> Json<Vec<Item>> {
     FROM
         items L LEFT JOIN items R
         ON subpath(L.path, 0, -1) = R.path
-    ORDER BY (R.id, L.path)";
+    ORDER BY (R.id, L.path);";
     let mut items = vec![];
-    for row in &connection.query(query, &[]).unwrap() {
+    for row in &connection.query(query, &[])? {
         let item = Item {
             id: row.get(0),
             parent: row.get(1),
@@ -41,33 +42,66 @@ fn items() -> Json<Vec<Item>> {
         };
         items.push(item);
     }
-    Json(items)
+    Ok(Json(items))
 }
 
 
-#[post("/item/new/<_id>", format = "application/json", data = "<item>")]
-fn new_item(_id: String, item: Json<NewItem>) -> () {
+fn uuid_to_label(uuid: Uuid) -> String {
+    uuid.simple().to_string()
+}
+
+
+#[post("/item/<_id>", format = "application/json", data = "<item>")]
+fn new_item(_id: String, item: Json<NewItem>) -> Result<(), Error> {
     let connection = establish_connection();
     let Json(item) = item;
+    let mut parent_path: String;
     let mut path: String;
+    let mut ranking: i32 = 0;
+
+    let create = connection.transaction()?;
     if let Some(parent) = item.parent {
-        let parent_item_row = connection
-            .query("SELECT ltree2text(path) FROM items WHERE id = $1", &[&parent]).unwrap();
-        let parent_path: String = parent_item_row.into_iter().next().unwrap().get(0);
-        path = parent_path + ".A";
+        let query = "SELECT ltree2text(path) FROM items
+        WHERE path = (SELECT path FROM items WHERE id = $1);";
+        let parent_item_row = create
+            .query(query, &[&parent])?;
+        let not_found = format_err!("not found parent");
+        parent_path = parent_item_row
+            .into_iter()
+            .next()
+            .ok_or(not_found)?
+            .get(0);
+        path = format!("{}.{}", parent_path, uuid_to_label(item.id));
+        if let Some(previous) = item.previous {
+            let query = "SELECT ranking + 1 FROM items WHERE id = $1;";
+            if let Some(r) = create.query(query, &[&previous])?.into_iter().next() {
+                ranking = r.get(0)
+            }
+        }
     }
     else {
         path = item.id.simple().to_string();
+        parent_path = "".to_string();
     }
-    let _ = connection.execute("
-    INSERT INTO items (id, path, content, created, modified)
+    if parent_path.len() > 0 {
+        let _ = create.execute(
+            "UPDATE items SET ranking = ranking + 1 WHERE path ~ (text($1))::lquery AND ranking >= $2;",
+            &[&format!("{}.*{{1}}", parent_path), &ranking]
+            )?;
+    }
+    let _ = create.execute("
+    INSERT INTO items (id, path, content, ranking, created, modified)
     VALUES (
-        $1, $2, $3, TIMESTAMP 'now', TIMESTAMP 'now'
+        $1, text2ltree($2), $3, $4, TIMESTAMP 'now', TIMESTAMP 'now'
     )
     ON CONFLICT (id) DO UPDATE
-        SET content = EXCLUDED.content
-        SET modified = EXCLUDED.modified
-    ", &[&item.id, &path, &item.content]).unwrap();
+        SET content = EXCLUDED.content,
+            modified = EXCLUDED.modified,
+            path = EXCLUDED.path,
+            ranking = EXCLUDED.ranking;
+    ", &[&item.id, &path, &item.content, &ranking])?;
+    create.commit()?;
+    Ok(())
 }
 
 
@@ -106,6 +140,6 @@ pub fn establish_connection() -> Connection {
 
 fn main() {
     rocket::ignite()
-        .mount("/", routes![index, items])
+        .mount("/", routes![index, items, new_item])
         .launch();
 }
