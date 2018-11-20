@@ -1,0 +1,2 @@
+[global.databases.iooo]
+url = "postgres://whoa@localhost/iooo"

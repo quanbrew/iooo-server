@@ -41,7 +41,11 @@ pub struct NewItem {
 
 
 fn uuid_to_label(uuid: Uuid) -> String {
-    uuid.simple().to_string()
+    use std::mem::transmute;
+
+    let bytes: [u8; 16] = uuid.as_bytes().clone();
+    let number: u128 = unsafe { transmute::<[u8; 16], u128>(bytes) };
+    crate::base62::encode(number)
 }
 
 
