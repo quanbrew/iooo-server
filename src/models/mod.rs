@@ -1,8 +1,8 @@
 use std::env;
 
 use chrono::NaiveDateTime;
-use failure::{Error, format_err};
-use postgres::{Connection, TlsMode};
+use failure::Fail;
+use postgres::{Connection, Error as DatabaseError, TlsMode};
 use postgres::transaction::Transaction;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -23,7 +23,6 @@ pub struct Item {
     pub parent: Option<Uuid>,
     pub fold: bool,
     pub metadata: JsonValue,
-    pub deleted: bool,
     pub favorite: bool,
     pub tags: Vec<String>,
     pub created: NaiveDateTime,
@@ -46,25 +45,37 @@ fn uuid_to_label(uuid: Uuid) -> String {
 }
 
 
+#[derive(Fail, Debug)]
+pub enum DataError {
+    #[fail(display = "Not found item by id {}", _0)]
+    NotFoundByUUID(Uuid),
+    #[fail(display = "Not found item by path {}", _0)]
+    NotFoundByPath(String),
+    #[fail(display = "{}", _0)]
+    Database(#[fail(cause)] DatabaseError),
+}
+
+
 impl NewItem {
-    pub fn insert(self, create: &Transaction) -> Result<(), Error> {
+    pub fn insert(self, create: &Transaction) -> Result<(), DataError> {
         let mut parent_path: String;
         let mut path: String;
         let mut ranking: i32 = 0;
 
         if let Some(parent) = self.parent {
             let parent_item_row = create
-                .query(include_str!("get_parent_path.sql"), &[&parent])?;
-            let not_found = format_err!("not found parent");
+                .query(include_str!("get_parent_path.sql"), &[&parent])
+                .map_err(DataError::Database)?;
             parent_path = parent_item_row
                 .into_iter()
                 .next()
-                .ok_or(not_found)?
+                .ok_or(DataError::NotFoundByUUID(parent))?
                 .get(0);
             path = format!("{}.{}", parent_path, uuid_to_label(self.id));
             if let Some(previous) = self.previous {
                 let query = include_str!("get_ranking.sql");
-                create.query(query, &[&previous])?
+                create.query(query, &[&previous])
+                    .map_err(DataError::Database)?
                     .into_iter().next()
                     .map(|r| ranking = r.get(0));
             }
@@ -74,9 +85,18 @@ impl NewItem {
         }
         if parent_path.len() > 0 {
             let children_path_query = format!("{}.*{{1}}", parent_path);
-            let _ = create.execute(include_str!("update_item_ranking.sql"), &[&children_path_query, &ranking])?;
+            let _ = create
+                .execute(
+                    include_str!("update_item_ranking.sql"),
+                    &[&children_path_query, &ranking],
+                )
+                .map_err(DataError::Database)?;
         }
-        let _ = create.execute(include_str!("insert_or_update.sql"), &[&self.id, &path, &self.content, &ranking])?;
+        let _ = create
+            .execute(
+                include_str!("insert_or_update.sql"),
+                &[&self.id, &path, &self.content, &ranking],
+            ).map_err(DataError::Database);
         Ok(())
     }
 }
@@ -93,10 +113,9 @@ pub fn get_item_list(connection: &Connection) -> Vec<Item> {
             content: row.get(2),
             fold: row.get(3),
             metadata: row.get(4),
-            deleted: row.get(5),
-            favorite: row.get(6),
-            tags: row.get(7),
-            created: row.get(8),
-            modified: row.get(9),
+            favorite: row.get(5),
+            tags: row.get(6),
+            created: row.get(7),
+            modified: row.get(8),
         }).collect()
 }

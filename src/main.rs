@@ -1,13 +1,12 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
 use dotenv::dotenv;
-use failure::Error;
 use rocket::{get, post, routes};
 use rocket_contrib::json::Json;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use self::models::{Item, NewItem};
+use self::models::{DataError, Item, NewItem};
 
 mod models;
 
@@ -29,14 +28,14 @@ fn uuid_to_label(uuid: Uuid) -> String {
 
 
 #[post("/item", format = "application/json", data = "<items>")]
-fn new_item(items: Json<Vec<NewItem>>) -> Result<(), Error> {
+fn new_item(items: Json<Vec<NewItem>>) -> Result<(), DataError> {
     let connection = models::establish_connection();
     let Json(items) = items;
-    let transaction = connection.transaction()?;
+    let transaction = connection.transaction().map_err(DataError::Database)?;
     for item in items {
         item.insert(&transaction)?;
     }
-    transaction.commit()?;
+    transaction.commit().map_err(DataError::Database)?;
     Ok(())
 }
 
