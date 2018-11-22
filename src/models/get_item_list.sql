@@ -5,4 +5,4 @@ FROM
   items L LEFT JOIN items R
   ON subpath(L.path, 0, -1) = R.path
 WHERE NOT L.deleted
-ORDER BY (R.id, L.path);
+ORDER BY (R.id, L.ranking);
