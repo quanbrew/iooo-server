@@ -8,10 +8,10 @@ CREATE TABLE items (
     -- owner uuid NOT NULL,
     -- writers uuid[] DEFAULT '{}' NOT NULL,
     content text NOT NULL,
-    fold boolean DEFAULT FALSE NOT NULL,
+    expand boolean DEFAULT FALSE NOT NULL,
     metadata jsonb NOT NULL DEFAULT '{}',
     deleted boolean DEFAULT FALSE NOT NULL,
-    favorite boolean DEFAULT FALSE NOT NULL,
+    ranking integer NOT NULL,
     tags text[] DEFAULT '{}' NOT NULL,
     created timestamp NOT NULL,
     modified timestamp NOT NULL

@@ -21,9 +21,8 @@ pub struct Item {
     pub id: Uuid,
     pub content: String,
     pub parent: Option<Uuid>,
-    pub fold: bool,
+    pub expand: bool,
     pub metadata: JsonValue,
-    pub favorite: bool,
     pub tags: Vec<String>,
     pub created: NaiveDateTime,
     pub modified: NaiveDateTime,
@@ -37,6 +36,7 @@ pub struct NewItem {
     pub previous: Option<Uuid>,
     pub content: String,
     pub metadata: JsonValue,
+    pub expand: bool,
 }
 
 
@@ -99,7 +99,7 @@ impl NewItem {
         let _ = create
             .execute(
                 include_str!("insert_or_update.sql"),
-                &[&self.id, &path, &self.content, &ranking],
+                &[&self.id, &path, &self.content, &ranking, &self.expand],
             ).map_err(DataError::Database);
         Ok(())
     }
@@ -115,11 +115,10 @@ pub fn get_item_list(connection: &Connection) -> Vec<Item> {
             id: row.get(0),
             parent: row.get(1),
             content: row.get(2),
-            fold: row.get(3),
+            expand: row.get(3),
             metadata: row.get(4),
-            favorite: row.get(5),
-            tags: row.get(6),
-            created: row.get(7),
-            modified: row.get(8),
+            tags: row.get(5),
+            created: row.get(6),
+            modified: row.get(7),
         }).collect()
 }
