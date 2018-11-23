@@ -37,6 +37,7 @@ pub struct NewItem {
     pub content: String,
     pub metadata: JsonValue,
     pub expand: bool,
+    pub deleted: bool,
 }
 
 
@@ -99,7 +100,7 @@ impl NewItem {
         let _ = create
             .execute(
                 include_str!("insert_or_update.sql"),
-                &[&self.id, &path, &self.content, &ranking, &self.expand],
+                &[&self.id, &path, &self.content, &ranking, &self.expand, &self.deleted],
             ).map_err(DataError::Database);
         Ok(())
     }

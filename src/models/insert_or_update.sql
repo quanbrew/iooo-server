@@ -1,6 +1,6 @@
-INSERT INTO items (id, path, content, ranking, expand, created, modified)
+INSERT INTO items (id, path, content, ranking, expand, deleted, created, modified)
 VALUES (
-  $1, text2ltree($2), $3, $4, $5, TIMESTAMP 'now', TIMESTAMP 'now'
+  $1, text2ltree($2), $3, $4, $5, $6, TIMESTAMP 'now', TIMESTAMP 'now'
 )
 ON CONFLICT (id) DO UPDATE
   SET
@@ -8,4 +8,5 @@ ON CONFLICT (id) DO UPDATE
     modified = EXCLUDED.modified,
     path = EXCLUDED.path,
     expand = EXCLUDED.expand,
+    deleted = EXCLUDED.deleted,
     ranking = EXCLUDED.ranking;
