@@ -1,0 +1,1 @@
+UPDATE items SET deleted = true WHERE id = $1;

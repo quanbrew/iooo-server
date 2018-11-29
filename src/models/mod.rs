@@ -37,7 +37,12 @@ pub struct NewItem {
     pub content: String,
     pub metadata: JsonValue,
     pub expand: bool,
-    pub deleted: bool,
+}
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DeleteItem {
+    pub id: Uuid,
 }
 
 
@@ -52,6 +57,8 @@ fn uuid_to_label(uuid: Uuid) -> String {
 
 #[derive(Fail, Debug)]
 pub enum DataError {
+    #[fail(display = "Cannot parse: {}", _0)]
+    CanNotParse(String),
     #[fail(display = "Not found item by id {}", _0)]
     NotFoundByUUID(Uuid),
     #[fail(display = "Not found item by path {}", _0)]
@@ -100,10 +107,17 @@ impl NewItem {
         let _ = create
             .execute(
                 include_str!("insert_or_update.sql"),
-                &[&self.id, &path, &self.content, &ranking, &self.expand, &self.deleted],
+                &[&self.id, &path, &self.content, &ranking, &self.expand],
             ).map_err(DataError::Database);
         Ok(())
     }
+}
+
+
+pub fn delete_item(connection: &Connection, id: Uuid) -> Result<(), DataError> {
+    connection.execute(include_str!("delete_item.sql"), &[&id])
+        .map(|_| ())
+        .map_err(DataError::Database)
 }
 
 

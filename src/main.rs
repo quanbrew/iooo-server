@@ -1,11 +1,11 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-use rocket::{get, post, routes};
+use rocket::{delete, get, post, routes};
 use rocket_contrib::database;
 use rocket_contrib::json::Json;
 use serde_derive::{Deserialize, Serialize};
 
-use self::models::{DataError, Item, NewItem};
+use self::models::{DataError, DeleteItem, Item, NewItem};
 
 mod models;
 mod base62;
@@ -40,10 +40,17 @@ fn new_item(connection: Database, items: Json<Vec<NewItem>>) -> Result<(), DataE
 }
 
 
+#[delete("/item", format = "application/json", data = "<data>")]
+fn remove_item(connection: Database, data: Json<DeleteItem>) -> Result<(), DataError> {
+    let Database(ref connection) = connection;
+    models::delete_item(&connection, data.0.id)
+}
+
+
 fn main() {
     rocket::ignite()
         .attach(Database::fairing())
-        .mount("/", routes![index, items, new_item])
+        .mount("/", routes![index, items, new_item, remove_item])
         .launch();
 }
 
