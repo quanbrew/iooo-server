@@ -5,7 +5,7 @@ use rocket_contrib::database;
 use rocket_contrib::json::Json;
 use serde_derive::{Deserialize, Serialize};
 
-use self::models::{DataError, DeleteItem, Item, NewItem};
+use self::models::{DataError, DeleteItem, Item, UpdateItem};
 
 mod models;
 mod base62;
@@ -28,7 +28,7 @@ fn items(connection: Database) -> Json<Vec<Item>> {
 
 
 #[post("/item", format = "application/json", data = "<items>")]
-fn new_item(connection: Database, items: Json<Vec<NewItem>>) -> Result<(), DataError> {
+fn update_item(connection: Database, items: Json<Vec<UpdateItem>>) -> Result<(), DataError> {
     let Database(ref connection) = connection;
     let Json(items) = items;
     let transaction = connection.transaction().map_err(DataError::Database)?;

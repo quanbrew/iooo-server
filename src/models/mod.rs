@@ -30,7 +30,7 @@ pub struct Item {
 
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct NewItem {
+pub struct UpdateItem {
     pub id: Uuid,
     pub parent: Option<Uuid>,
     pub previous: Option<Uuid>,
@@ -68,28 +68,34 @@ pub enum DataError {
 }
 
 
-impl NewItem {
-    pub fn insert(self, create: &Transaction) -> Result<(), DataError> {
+impl UpdateItem {
+    fn parent_path(transaction: &Transaction, id: Uuid) -> Result<String, DataError> {
+        transaction
+            .query(include_str!("get_parent_path.sql"), &[&id]) // do sql query
+            .map_err(DataError::Database)? // handle query error
+            .into_iter().next() // get first row
+            .ok_or(DataError::NotFoundByUUID(id)) // ok, or no such row
+            .map(|r| r.get(0)) // get first column
+    }
+
+    fn get_ranking(transaction: &Transaction, id: Uuid) -> Result<i32, DataError> {
+        transaction.query(include_str!("get_ranking.sql"), &[&id])
+            .map_err(DataError::Database)?
+            .into_iter().next()
+            .map(|r| r.get(0))
+            .ok_or(DataError::NotFoundByUUID(id))
+    }
+
+    pub fn insert(self, transaction: &Transaction) -> Result<(), DataError> {
         let mut parent_path: String;
         let mut path: String;
         let mut ranking: i32 = 0;
 
         if let Some(parent) = self.parent {
-            let parent_item_row = create
-                .query(include_str!("get_parent_path.sql"), &[&parent])
-                .map_err(DataError::Database)?;
-            parent_path = parent_item_row
-                .into_iter()
-                .next()
-                .ok_or(DataError::NotFoundByUUID(parent))?
-                .get(0);
+            parent_path = UpdateItem::parent_path(transaction, parent)?;
             path = format!("{}.{}", parent_path, uuid_to_label(self.id));
             if let Some(previous) = self.previous {
-                let query = include_str!("get_ranking.sql");
-                create.query(query, &[&previous])
-                    .map_err(DataError::Database)?
-                    .into_iter().next()
-                    .map(|r| ranking = r.get(0));
+                ranking = UpdateItem::get_ranking(transaction, previous)?;
             }
         } else {
             path = self.id.simple().to_string();
@@ -97,14 +103,14 @@ impl NewItem {
         }
         if parent_path.len() > 0 {
             let children_path_query = format!("{}.*{{1}}", parent_path);
-            let _ = create
+            let _ = transaction
                 .execute(
                     include_str!("update_item_ranking.sql"),
                     &[&children_path_query, &ranking],
                 )
                 .map_err(DataError::Database)?;
         }
-        let _ = create
+        let _ = transaction
             .execute(
                 include_str!("insert_or_update.sql"),
                 &[&self.id, &path, &self.content, &ranking, &self.expand],
